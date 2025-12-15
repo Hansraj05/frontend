@@ -215,3 +215,4 @@ function addParkingMarker(spot) {
 // CRITICAL: Calling the main function directly at the end of the script
 getLocationAndLoadMap();
 
+
