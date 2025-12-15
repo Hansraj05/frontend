@@ -1,216 +1,239 @@
-// --- Global Variables ---
+// Global map variable
 let map;
-let parkingMarkers = [];
-let userMarker; 
 
-// Fallback coordinates (Guwahati, used ONLY if geolocation is blocked/fails)
-const FALLBACK_LAT = 26.14; 
-const FALLBACK_LNG = 91.64;
+// The JSON array for the Dark Minimalist Map Style
+const darkMapStyles = [
+    { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+    { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+    { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+    {
+        featureType: "administrative.locality",
+        elementType: "labels.text.fill",
+        stylers: [{ color: "#d59563" }],
+    },
+    {
+        featureType: "poi",
+        elementType: "labels.text.fill",
+        stylers: [{ color: "#d59563" }],
+    },
+    {
+        featureType: "poi.park",
+        elementType: "geometry",
+        stylers: [{ color: "#263c3f" }],
+    },
+    {
+        featureType: "poi.park",
+        elementType: "labels.text.fill",
+        stylers: [{ color: "#6b9a76" }],
+    },
+    {
+        featureType: "road",
+        elementType: "geometry",
+        stylers: [{ color: "#38414e" }],
+    },
+    {
+        featureType: "road",
+        elementType: "geometry.stroke",
+        stylers: [{ color: "#212a37" }],
+    },
+    {
+        featureType: "road",
+        elementType: "labels.text.fill",
+        stylers: [{ color: "#9ca5b3" }],
+    },
+    {
+        featureType: "road.highway",
+        elementType: "geometry",
+        stylers: [{ color: "#746855" }],
+    },
+    {
+        featureType: "road.highway",
+        elementType: "geometry.stroke",
+        stylers: [{ color: "#1f2835" }],
+    },
+    {
+        featureType: "road.highway",
+        elementType: "labels.text.fill",
+        stylers: [{ color: "#f3d19c" }],
+    },
+    {
+        featureType: "transit",
+        elementType: "geometry",
+        stylers: [{ color: "#2f3948" }],
+    },
+    {
+        featureType: "transit.station",
+        elementType: "labels.text.fill",
+        stylers: [{ color: "#d59563" }],
+    },
+    {
+        featureType: "water",
+        elementType: "geometry",
+        stylers: [{ color: "#17263c" }],
+    },
+    {
+        featureType: "water",
+        elementType: "labels.text.fill",
+        stylers: [{ color: "#515c6d" }],
+    },
+    {
+        featureType: "water",
+        elementType: "labels.text.stroke",
+        stylers: [{ color: "#17263c" }],
+    },
+];
 
-// --- 2. LOCATION HANDLING: Handles the user's decision ---
 
-function getLocationAndLoadMap() {
-    const statusElement = document.getElementById('location-status');
-    
-    if (statusElement) {
-        statusElement.textContent = 'Please allow location access...';
-    } else {
-        console.error("CRITICAL: Status bar element not found in index1.html.");
-    }
+function initMap() {
+    // Initial center is a general point in India
+    const initialCenter = { lat: 22.351114, lng: 78.667743 };
 
+    map = new google.maps.Map(document.getElementById("map"), {
+        center: initialCenter,
+        zoom: 5,
+        // Insert the dark map styles here
+        styles: darkMapStyles,
+        mapTypeControl: false, // Optional: hides the map/satellite toggle
+        streetViewControl: false, // Optional: hides the street view character
+    });
+
+    // Check if geolocation is available in the browser
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-            // SUCCESS Handler (Uses whatever the browser reports, e.g., Lakhimpur)
             (position) => {
-                const userLat = position.coords.latitude;
-                const userLng = position.coords.longitude;
-                
-                console.log("SUCCESS: Received browser location (may be inaccurate).");
-                if (statusElement) statusElement.textContent = 'Location successfully retrieved.';
-                
-                displayMapAndSpots(userLat, userLng, true); 
+                const userLocation = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                };
+                // Center the map on the user's location
+                map.setCenter(userLocation);
+                map.setZoom(12); // Zoom in on the user's city
+
+                // Add a marker for the user's location
+                new google.maps.Marker({
+                    position: userLocation,
+                    map: map,
+                    title: "Your Location",
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: '#007BFF', // Primary Blue
+                        fillOpacity: 1,
+                        strokeWeight: 0,
+                        scale: 8
+                    }
+                });
             },
-            // ERROR Handler (Permission denied or Timeout)
-            (error) => {
-                console.error("Geolocation Error:", error.message);
-                
-                console.log("FALLBACK: Using default location (Guwahati).");
-                handleLocationError(FALLBACK_LAT, FALLBACK_LNG);
-            },
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 } 
+            () => {
+                // Handle the case where the user denies permission
+                handleLocationError(true, map.getCenter());
+            }
         );
     } else {
-        console.log("Browser does not support Geolocation.");
-        handleLocationError(FALLBACK_LAT, FALLBACK_LNG);
+        // Handle the case where the browser does not support Geolocation
+        handleLocationError(false, map.getCenter());
     }
+
+    // Load parking spot data from the API
+    loadParkingSpots();
 }
 
-function handleLocationError(fallbackLat, fallbackLng) {
-    const statusElement = document.getElementById('location-status');
-    if (statusElement) {
-        statusElement.textContent = 'Location Blocked/Unavailable. Displaying map at Default Project Location.';
-    }
-    
-    displayMapAndSpots(fallbackLat, fallbackLng, false);
+function handleLocationError(browserHasGeolocation, pos) {
+    // Alert the user if location access failed
+    alert(
+        browserHasGeolocation
+            ? "Error: The Geolocation service failed. Displaying default view."
+            : "Error: Your browser doesn't support geolocation."
+    );
 }
 
+// Function to fetch data from the Flask API and place markers
+function loadParkingSpots() {
+    // *** CRITICAL STEP: REPLACE THIS WITH YOUR LIVE RENDER URL ***
+    const apiBaseUrl = 'https://smart-parking-api-1i5w.onrender.com'; 
 
-// --- 3. MAP & SPOT DISPLAY (Leaflet Specific) ---
-
-function displayMapAndSpots(lat, lng, locationReceived) {
-    const userPos = [lat, lng];
-    let bounds = [];
-
-    // 1. Initialize the Leaflet Map instance
-    if (map) { map.remove(); } 
-    map = L.map('map'); 
-
-    // Add a tile layer (the actual map tiles from OpenStreetMap)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
-
-    // 2. Add the User Location Marker (at the reported location)
-    let markerTitle = locationReceived ? "Your Reported Location" : "Default Project Center";
-    
-    userMarker = L.marker(userPos, { 
-        title: markerTitle,
-        icon: L.icon({
-            // CORRECTED: Removed the extra 'https://'
-            iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', 
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41]
-        })
-    }).addTo(map);
-    
-    if (locationReceived) {
-        userMarker.bindPopup("Map centered on your browser's reported location. If this is inaccurate, please check your network settings.").openPopup();
-    }
-    
-    bounds.push(userPos); 
-
-    // 3. Load spots using the reported location for filtering, and pass the bounds array
-    loadParkingSpots(lat, lng, bounds); 
-    
-    // Set up the auto-refresh every 30 seconds
-    setInterval(() => {
-        // NOTE: We pass the initial coordinates (lat, lng) to the refresh function
-        // to maintain the initial filtering context.
-        loadParkingSpots(lat, lng, bounds); 
-    }, 30000); 
-}
-
-
-// --- 4. BACKEND COMMUNICATION (Modified to handle bounds array) ---
-
-function loadParkingSpots(userLat, userLng, bounds) {
+    // Define the data payload required by the Flask API
     const data = {
-        user_lat: userLat,
-        user_lng: userLng,
+        city: 'India_Cities' // Or whatever city/region your API expects for the full dataset
     };
 
-    fetch('https://smart-parking-api-1i5w.onrender.com/predict', {
+    fetch(`${apiBaseUrl}/predict`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            // Crucial for cross-origin requests
+            'Accept': 'application/json' 
+        },
         body: JSON.stringify(data),
     })
     .then(response => {
-        if (!response.ok) { throw new Error(`HTTP error! status: ${response.status}`); }
+        if (!response.ok) {
+            // Throw an error if the API request failed (e.g., 500 server error)
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
         return response.json();
     })
-    .then(spots => {
-        clearMarkers();
-        
-        // Reset bounds for fitting the map view
-        // We assume the user marker (userPos) is already in the first element of bounds.
-        // We only reset the parking spot markers (which start from index 1).
-        bounds.length = 1; 
-
-        spots.forEach(spot => {
-            addParkingMarker(spot);
-            // Add every spot's location to the bounds array
-            bounds.push([spot.lat, spot.lng]); 
-        });
-        
-        console.log(`Successfully updated ${spots.length} parking spots.`);
-        
-        // CRITICAL FIX: Fit the map view to contain the user and all loaded parking markers!
-        if (bounds.length > 1) { // bounds.length > 1 means we have the user marker + at least one spot
-            map.fitBounds(bounds, { padding: [50, 50] }); 
-        } else {
-            // If only the user marker exists, set a default view (zoom 12)
-            map.setView([userLat, userLng], 12);
+    .then(data => {
+        if (data && data.predictions) {
+            data.predictions.forEach(parking => {
+                placeMarker(parking);
+            });
         }
-        
-        // Final Fix: Safety check for 'last-refresh'
-        const refreshElement = document.getElementById('last-refresh');
-        if (refreshElement) {
-            refreshElement.textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
-        }
-
     })
     .catch(error => {
         console.error('Error fetching parking data:', error);
-        
-        // Final Fix: Safety check for 'location-status'
-        const statusElement = document.getElementById('location-status');
-        if (statusElement) {
-            statusElement.textContent = 'Error fetching data from server. Check if backend is running (Flask).';
+        alert('Could not load real-time parking data. Check the console for details.');
+    });
+}
+
+// Function to place an individual marker on the map
+function placeMarker(parking) {
+    const latLng = new google.maps.LatLng(parking.latitude, parking.longitude);
+    
+    // Determine the marker color based on predicted availability (Enhancement Logic)
+    let markerColor;
+    let availabilityText;
+    
+    if (parking.available > 10) {
+        markerColor = '#28A745'; // Success Green: High Availability
+        availabilityText = `<span style="color: #28A745; font-weight: bold;">High Availability (${parking.available} spots)</span>`;
+    } else if (parking.available > 0) {
+        markerColor = '#FFC107'; // Warning Yellow/Orange: Limited Availability
+        availabilityText = `<span style="color: #FFC107; font-weight: bold;">Limited Availability (${parking.available} spots)</span>`;
+    } else {
+        markerColor = '#DC3545'; // Danger Red: Fully Occupied
+        availabilityText = `<span style="color: #DC3545; font-weight: bold;">Fully Occupied</span>`;
+    }
+
+    const marker = new google.maps.Marker({
+        position: latLng,
+        map: map,
+        title: parking.location_name,
+        icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            fillColor: markerColor,
+            fillOpacity: 0.9,
+            strokeWeight: 1,
+            strokeColor: '#343A40', // Dark Charcoal stroke for contrast
+            scale: 10 // Slightly larger pin
         }
     });
-}
 
-// --- 5. MARKER RENDERING & UTILITIES ---
-
-function clearMarkers() {
-    parkingMarkers.forEach(marker => map.removeLayer(marker));
-    parkingMarkers = [];
-}
-
-function getMarkerIcon(status) {
-    let color = 'blue';
-    if (status === 'red') { color = 'red'; } 
-    else if (status === 'yellow') { color = 'gold'; } 
-    else { color = 'green'; }
-    
-    return L.icon({
-        // CORRECTED: This also uses the correct URL
-        iconUrl: `https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    });
-}
-
-function addParkingMarker(spot) {
-    const latLng = [spot.lat, spot.lng];
-    const icon = getMarkerIcon(spot.status_color);
-
-    const newMarker = L.marker(latLng, { 
-        icon: icon, title: spot.name, spotData: spot 
-    });
-
-    const content = `
-        <div class="info-window-content">
-            <h3>${spot.name}</h3>
-            <p><strong>Available Spots:</strong> ${spot.available_count} / ${spot.total_capacity}</p>
-            <p><strong>Predicted Occupied:</strong> ${spot.predicted_occupied} cars</p>
-            <p><strong>Status:</strong> <span style="color:${spot.status_color}; font-weight:bold;">${spot.available_count < 5 ? 'CRITICAL' : spot.available_count < 20 ? 'BUSY' : 'GOOD'}</span></p>
-            <p><small>Distance: ${spot.distance_km} km</small></p>
+    // Create the content for the info window (popup)
+    const contentString = `
+        <div style="font-family: Arial, sans-serif; color: #343A40;">
+            <h4 style="margin: 0 0 5px 0; color: #007BFF;">${parking.location_name}</h4>
+            <p style="margin: 0;">Status: ${availabilityText}</p>
+            <p style="margin: 0;">Rate: ₹${parking.hourly_rate} / hour</p>
+            <p style="margin: 5px 0 0 0; font-size: 0.8em;">City: ${parking.city}</p>
         </div>
     `;
 
-    newMarker.bindPopup(content);
-    newMarker.addTo(map);
+    const infoWindow = new google.maps.InfoWindow({
+        content: contentString,
+    });
 
-    parkingMarkers.push(newMarker);
-    return newMarker; 
+    // Add click listener to display the info window
+    marker.addListener("click", () => {
+        infoWindow.open(map, marker);
+    });
 }
-
-// CRITICAL: Calling the main function directly at the end of the script
-getLocationAndLoadMap();
