@@ -1,2 +1,74 @@
-body{font-family: Arial,sans-serif;text-align:center;}
-#map{height:520px;width:90%;margin:auto;border-radius:10px;}
+/* GLOBAL RESET: ESSENTIAL FOR FULL SCREEN ON MOBILE */
+html, body {
+    margin: 0; /* Eliminates default browser margins */
+    padding: 0; /* Eliminates default browser padding */
+    /* Forces the browser to use 100% of the viewport height */
+    height: 100%;
+    
+    /* Prevents unwanted scrolling on some mobile devices and ensures full-screen map */
+    overflow: hidden; 
+    
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* Modern, readable font */
+    background-color: #F8F9FA; /* Soft Light Gray background (clean look) */
+    color: #343A40; /* Dark Charcoal text color for high contrast */
+}
+
+/* MAP CONTAINER */
+#map {
+    width: 100%;
+    /* 100vh ensures the map takes the full height of the viewport, even with mobile browser UI */
+    height: 100vh;
+    /* Fallback for older browsers (though 100% height from body/html should cover most cases) */
+    height: 100%; 
+}
+
+/* * UI ELEMENT STYLES (Suggestions based on the new color palette) *
+ * These styles are not strictly necessary for the map but will be used if you add
+ * any pop-up info boxes, side panels, or overlays to the map.
+ */
+
+/* Style for a clean, modern info box or button */
+.info-box {
+    background-color: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); /* Soft shadow for depth */
+}
+
+/* Primary Color for Headers and important labels */
+.primary-text {
+    color: #007BFF; /* Bright Azure Blue */
+    font-weight: 700;
+}
+
+/* Status colors for displaying availability */
+.availability-high {
+    color: #28A745; /* Success Green */
+    font-weight: bold;
+}
+
+.availability-low {
+    color: #FFC107; /* Warning Yellow/Orange */
+    font-weight: bold;
+}
+
+.availability-full {
+    color: #DC3545; /* Danger Red */
+    font-weight: bold;
+}
+
+/* Simple button style */
+.btn-primary {
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+}
+
