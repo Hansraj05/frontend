@@ -6,10 +6,10 @@ let userMarker;
 const FALLBACK_LAT = 26.14; 
 const FALLBACK_LNG = 91.64;
 
-// --- 1. LOCATION HANDLING ---
+// --- 1. INITIALIZATION ---
 function getLocationAndLoadMap() {
-    const statusElement = document.getElementById('location-status');
-    if (statusElement) statusElement.textContent = 'Initializing...';
+    const statusEl = document.getElementById('location-status');
+    if (statusEl) statusEl.textContent = 'Initializing...';
 
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -27,8 +27,8 @@ function getLocationAndLoadMap() {
 }
 
 function handleLocationError(lat, lng) {
-    const statusElement = document.getElementById('location-status');
-    if (statusElement) statusElement.textContent = 'Using Default Location.';
+    const statusEl = document.getElementById('location-status');
+    if (statusEl) statusEl.textContent = 'Using Default Location.';
     displayMapAndSpots(lat, lng, false);
 }
 
@@ -51,19 +51,23 @@ function displayMapAndSpots(lat, lng, locationReceived) {
         })
     }).addTo(map).bindPopup("<b>You are here</b>").openPopup();
 
-    // Load spots immediately
     loadParkingSpots(lat, lng); 
 }
 
-// --- 3. BACKEND COMMUNICATION (FIXING THE 400 ERROR) ---
+// --- 3. THE FIXED API CALL (Fixes 400 Error) ---
 function loadParkingSpots(userLat, userLng) {
     const apiURL = 'https://smart-parking-api-1i5w.onrender.com/predict';
 
-    // Rectified Payload: Including EVERYTHING the backend might need
+    // We send every possible key name that a Flask API might be looking for
+    // This prevents the 400 "KeyError" in your Python code
     const payload = {
         "city": "India_Cities",
         "latitude": userLat,
-        "longitude": userLng
+        "longitude": userLng,
+        "user_lat": userLat,
+        "user_lng": userLng,
+        "lat": userLat,
+        "lng": userLng
     };
 
     fetch(apiURL, {
@@ -73,7 +77,7 @@ function loadParkingSpots(userLat, userLng) {
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
+            throw new Error(`Server Error ${response.status}`);
         }
         return response.json();
     })
@@ -81,11 +85,10 @@ function loadParkingSpots(userLat, userLng) {
         clearMarkers();
         let bounds = [[userLat, userLng]];
 
-        // Handle different possible JSON response structures
+        // Support both "predictions" list or a direct list response
         const spots = data.predictions || (Array.isArray(data) ? data : []); 
 
         spots.forEach(spot => {
-            // Check for both 'latitude' or 'lat' just in case
             const sLat = spot.latitude || spot.lat;
             const sLng = spot.longitude || spot.lng;
             
@@ -99,21 +102,21 @@ function loadParkingSpots(userLat, userLng) {
             map.fitBounds(bounds, { padding: [50, 50] });
         }
         
-        // Safety checks for text elements to prevent "Cannot set properties of null"
+        // SAFETY CHECKS: Only update text if the ID exists in index1.html
         const refreshEl = document.getElementById('last-refresh');
-        if (refreshEl) refreshEl.textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
+        if (refreshEl) refreshEl.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
         
         const statusEl = document.getElementById('location-status');
-        if (statusEl) statusEl.textContent = 'System Active';
+        if (statusEl) statusEl.textContent = 'Spots Loaded';
     })
     .catch(error => {
-        console.error('Fetch Error:', error);
+        console.error('API Error:', error);
         const statusEl = document.getElementById('location-status');
-        if (statusEl) statusEl.textContent = 'API Connection Error';
+        if (statusEl) statusEl.textContent = 'API Error';
     });
 }
 
-// --- 4. MARKERS ---
+// --- 4. MARKER UTILS ---
 function clearMarkers() {
     parkingMarkers.forEach(marker => map.removeLayer(marker));
     parkingMarkers = [];
@@ -129,27 +132,23 @@ function getMarkerIcon(available) {
 }
 
 function addParkingMarker(spot, lat, lng) {
-    // Get availability count safely
     const available = spot.available !== undefined ? spot.available : (spot.available_count || 0);
     const icon = getMarkerIcon(available);
-    
     const newMarker = L.marker([lat, lng], { icon: icon }).addTo(map);
 
     const content = `
-        <div style="font-family: Arial, sans-serif; min-width: 150px;">
-            <h4 style="margin:0; color:#333;">${spot.location_name || spot.name || 'Parking Spot'}</h4>
-            <hr style="margin: 5px 0;">
-            <p style="margin:5px 0;"><b>Available:</b> ${available} spots</p>
-            <p style="margin:0;"><b>Price:</b> ₹${spot.hourly_rate || 20}/hr</p>
+        <div style="font-family: Arial; min-width: 120px;">
+            <b>${spot.location_name || spot.name || 'Spot'}</b><br>
+            Available: ${available}<br>
+            Rate: ₹${spot.hourly_rate || 20}/hr
         </div>
     `;
-
     newMarker.bindPopup(content);
     parkingMarkers.push(newMarker);
 }
 
-// Ensure the function runs after HTML is loaded
 window.onload = getLocationAndLoadMap;
+
 
 
 
