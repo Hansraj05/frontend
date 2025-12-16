@@ -9,7 +9,7 @@ const FALLBACK_LNG = 91.64;
 // --- 1. LOCATION HANDLING ---
 function getLocationAndLoadMap() {
     const statusElement = document.getElementById('location-status');
-    if (statusElement) statusElement.textContent = 'Initializing map...';
+    if (statusElement) statusElement.textContent = 'Initializing...';
 
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -36,6 +36,7 @@ function handleLocationError(lat, lng) {
 function displayMapAndSpots(lat, lng, locationReceived) {
     const userPos = [lat, lng];
     if (map) { map.remove(); } 
+    
     map = L.map('map').setView(userPos, 13); 
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -50,24 +51,25 @@ function displayMapAndSpots(lat, lng, locationReceived) {
         })
     }).addTo(map).bindPopup("<b>You are here</b>").openPopup();
 
-    // Initial load
+    // Load spots immediately
     loadParkingSpots(lat, lng); 
-    // Auto refresh
-    setInterval(() => loadParkingSpots(lat, lng), 30000); 
 }
 
 // --- 3. BACKEND COMMUNICATION (FIXING THE 400 ERROR) ---
 function loadParkingSpots(userLat, userLng) {
     const apiURL = 'https://smart-parking-api-1i5w.onrender.com/predict';
 
-    // We are switching to a GET-style request approach or a very basic POST
-    // to avoid the 400 Bad Request common in Flask JSON parsing.
+    // Rectified Payload: Including EVERYTHING the backend might need
+    const payload = {
+        "city": "India_Cities",
+        "latitude": userLat,
+        "longitude": userLng
+    };
+
     fetch(apiURL, {
         method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ "city": "India_Cities" }), 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
     })
     .then(response => {
         if (!response.ok) {
@@ -79,28 +81,35 @@ function loadParkingSpots(userLat, userLng) {
         clearMarkers();
         let bounds = [[userLat, userLng]];
 
-        // Match the "predictions" key from your Render logs
-        const spots = data.predictions || data; 
+        // Handle different possible JSON response structures
+        const spots = data.predictions || (Array.isArray(data) ? data : []); 
 
-        if (Array.isArray(spots)) {
-            spots.forEach(spot => {
-                addParkingMarker(spot);
-                if (spot.latitude && spot.longitude) {
-                    bounds.push([spot.latitude, spot.longitude]);
-                }
-            });
-
-            if (bounds.length > 1) {
-                map.fitBounds(bounds, { padding: [50, 50] });
+        spots.forEach(spot => {
+            // Check for both 'latitude' or 'lat' just in case
+            const sLat = spot.latitude || spot.lat;
+            const sLng = spot.longitude || spot.lng;
+            
+            if (sLat && sLng) {
+                addParkingMarker(spot, sLat, sLng);
+                bounds.push([sLat, sLng]);
             }
+        });
+
+        if (bounds.length > 1) {
+            map.fitBounds(bounds, { padding: [50, 50] });
         }
         
-        document.getElementById('last-refresh').textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
-        document.getElementById('location-status').textContent = 'System Active';
+        // Safety checks for text elements to prevent "Cannot set properties of null"
+        const refreshEl = document.getElementById('last-refresh');
+        if (refreshEl) refreshEl.textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
+        
+        const statusEl = document.getElementById('location-status');
+        if (statusEl) statusEl.textContent = 'System Active';
     })
     .catch(error => {
         console.error('Fetch Error:', error);
-        document.getElementById('location-status').textContent = 'API Error - Backend issues.';
+        const statusEl = document.getElementById('location-status');
+        if (statusEl) statusEl.textContent = 'API Connection Error';
     });
 }
 
@@ -119,18 +128,19 @@ function getMarkerIcon(available) {
     });
 }
 
-function addParkingMarker(spot) {
-    if (!spot.latitude || !spot.longitude) return;
-
-    const latLng = [spot.latitude, spot.longitude];
-    const icon = getMarkerIcon(spot.available);
-    const newMarker = L.marker(latLng, { icon: icon }).addTo(map);
+function addParkingMarker(spot, lat, lng) {
+    // Get availability count safely
+    const available = spot.available !== undefined ? spot.available : (spot.available_count || 0);
+    const icon = getMarkerIcon(available);
+    
+    const newMarker = L.marker([lat, lng], { icon: icon }).addTo(map);
 
     const content = `
-        <div style="font-family: Arial, sans-serif;">
-            <h4 style="margin:0;">${spot.location_name || 'Parking Spot'}</h4>
-            <p style="margin:5px 0;"><b>Available:</b> ${spot.available} spots</p>
-            <p style="margin:0;"><b>Price:</b> ₹${spot.hourly_rate}/hr</p>
+        <div style="font-family: Arial, sans-serif; min-width: 150px;">
+            <h4 style="margin:0; color:#333;">${spot.location_name || spot.name || 'Parking Spot'}</h4>
+            <hr style="margin: 5px 0;">
+            <p style="margin:5px 0;"><b>Available:</b> ${available} spots</p>
+            <p style="margin:0;"><b>Price:</b> ₹${spot.hourly_rate || 20}/hr</p>
         </div>
     `;
 
@@ -138,8 +148,9 @@ function addParkingMarker(spot) {
     parkingMarkers.push(newMarker);
 }
 
-// Start
+// Ensure the function runs after HTML is loaded
 window.onload = getLocationAndLoadMap;
+
 
 
 
